@@ -96,3 +96,60 @@ test('ShaderInputs#bindings', t => {
     t.end();
   });
 });
+
+// / Start sample module
+
+type ModuleAUniforms = {opacity?: number};
+type ModuleBUniforms = {color?: number[]};
+
+const moduleA = {
+  name: 'A',
+  vs: `
+  uniform moduleAUniforms {
+    float opacity;
+  } a;
+  `,
+  uniformTypes: {
+    opacity: 'f32'
+  },
+  uniforms: {opacity: 1}
+} as const satisfies ShaderModule<{}, ModuleAUniforms>;
+
+const moduleB = {
+  name: 'B',
+  dependencies: [moduleA] as ShaderModule[],
+  vs: `
+  uniform moduleBUniforms {
+    vec4 color;
+  } b;
+
+  vec4 getColor() {
+    return vec4(b.color.rgb, b.color.a * a.opacity);
+  }
+  `,
+  uniformTypes: {
+    color: 'vec4<f32>'
+  },
+  getUniforms: (opts: ModuleBUniforms) => {
+    const uniforms: ModuleBUniforms = {};
+    if (opts.color) {
+      uniforms.color = opts.color.map(x => x / 255);
+      uniforms.color[3] = uniforms.color[3] ?? 1;
+    }
+    return uniforms;
+  }
+} as const satisfies ShaderModule<ModuleBUniforms, ModuleBUniforms>;
+
+// / End sample module
+
+test('ShaderInputs#nested module', t => {
+  const shaderInputs = new ShaderInputs({B: moduleB});
+  shaderInputs.setProps({B: {color: [255, 255, 0]}});
+
+  const uniforms = shaderInputs.getUniformValues();
+
+  t.deepEqual(uniforms.A, {opacity: 1}, 'Module A uniforms');
+  t.deepEqual(uniforms.B, {color: [1, 1, 0, 1]}, 'Module B uniforms');
+
+  t.end();
+});
